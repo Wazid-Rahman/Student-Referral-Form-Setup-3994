@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #4F46E5;
+  --secondary-color: #818CF8;
+  --font-heading: inherit;
+  --font-body: inherit;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Utility classes for branding colors */
+.bg-primary {
+  background-color: var(--primary-color);
+}
+
+.text-primary {
+  color: var(--primary-color);
+}
+
+.border-primary {
+  border-color: var(--primary-color);
+}
+
+.bg-secondary {
+  background-color: var(--secondary-color);
+}
+
+.text-secondary {
+  color: var(--secondary-color);
+}
+
+.border-secondary {
+  border-color: var(--secondary-color);
+}
+
+/* Hover state for links and buttons */
+a:hover {
+  color: var(--primary-color);
+}
+
+/* Override Tailwind indigo colors with CSS variables */
+.hover\:text-indigo-600:hover {
+  color: var(--primary-color) !important;
+}
+
+.bg-indigo-600 {
+  background-color: var(--primary-color);
+}
+
+.hover\:bg-indigo-700:hover {
+  background-color: var(--primary-color);
+  filter: brightness(0.9);
+}
+
+.text-indigo-600 {
+  color: var(--primary-color);
+}
