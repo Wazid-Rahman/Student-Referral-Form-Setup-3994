@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import AdminLayout from './AdminLayout';
-import db from '../lib/mysql';
+import supabase from '../lib/supabase';
 
 const { FiPlus, FiTrash2, FiEdit, FiSave, FiEye, FiType, FiMail, FiPhone, FiCalendar, FiList, FiToggleLeft, FiToggleRight, FiMove, FiCopy, FiSettings } = FiIcons;
 
@@ -12,6 +12,7 @@ const FormBuilder = () => {
   const { formId } = useParams();
   const navigate = useNavigate();
   const isEditing = !!formId;
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -35,26 +36,10 @@ const FormBuilder = () => {
       }
     ],
     sections: [
-      {
-        id: 'parent',
-        name: 'Parent Information',
-        icon: 'FiUser'
-      },
-      {
-        id: 'student',
-        name: 'Student Information',
-        icon: 'FiGraduationCap'
-      },
-      {
-        id: 'location',
-        name: 'Location Information',
-        icon: 'FiMapPin'
-      },
-      {
-        id: 'program',
-        name: 'Program Information',
-        icon: 'FiBook'
-      }
+      { id: 'parent', name: 'Parent Information', icon: 'FiUser' },
+      { id: 'student', name: 'Student Information', icon: 'FiGraduationCap' },
+      { id: 'location', name: 'Location Information', icon: 'FiMapPin' },
+      { id: 'program', name: 'Program Information', icon: 'FiBook' }
     ],
     settings: {
       allowDuplicates: false,
@@ -63,9 +48,12 @@ const FormBuilder = () => {
       submitButtonText: 'Submit Application'
     }
   });
+
   const [activeTab, setActiveTab] = useState('fields');
   const [selectedField, setSelectedField] = useState(null);
   const [showFieldEditor, setShowFieldEditor] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (isEditing) {
@@ -75,39 +63,33 @@ const FormBuilder = () => {
 
   const fetchForm = async () => {
     try {
-      // In a real app, fetch from the forms table
-      const form = await db.getOne('forms', { id: parseInt(formId) });
-      if (form) {
-        setFormData({
-          name: form.name,
-          description: form.description,
-          status: form.status,
-          fields: JSON.parse(form.fields || '[]'),
-          sections: JSON.parse(form.sections || '[]'),
-          settings: JSON.parse(form.settings || '{}')
-        });
-      } else {
-        // Use mock data as fallback
-        setFormData({
-          name: 'Educational Program Application',
-          description: 'Complete application form for educational programs',
-          status: 'active',
-          fields: formData.fields,
-          sections: formData.sections,
-          settings: formData.settings
-        });
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('forms')
+        .select('*')
+        .eq('id', formId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        // Ensure fields and sections are properly parsed from JSON
+        const parsedData = {
+          ...data,
+          fields: Array.isArray(data.fields) ? data.fields : [],
+          sections: Array.isArray(data.sections) ? data.sections : [],
+          settings: typeof data.settings === 'object' ? data.settings : formData.settings
+        };
+        setFormData(parsedData);
       }
     } catch (error) {
       console.error('Error fetching form:', error);
-      // Use mock data as fallback
-      setFormData({
-        name: 'Educational Program Application',
-        description: 'Complete application form for educational programs',
-        status: 'active',
-        fields: formData.fields,
-        sections: formData.sections,
-        settings: formData.settings
-      });
+      setError(error.message || 'Failed to load form');
+      // Keep the default formData
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,12 +114,12 @@ const FormBuilder = () => {
       section: 'parent',
       options: type === 'select' || type === 'radio' ? ['Option 1', 'Option 2'] : undefined
     };
-    
+
     setFormData(prev => ({
       ...prev,
       fields: [...prev.fields, newField]
     }));
-    
+
     setSelectedField(newField);
     setShowFieldEditor(true);
   };
@@ -145,7 +127,7 @@ const FormBuilder = () => {
   const updateField = (fieldId, updates) => {
     setFormData(prev => ({
       ...prev,
-      fields: prev.fields.map(field => 
+      fields: prev.fields.map(field =>
         field.id === fieldId ? { ...field, ...updates } : field
       )
     }));
@@ -156,46 +138,66 @@ const FormBuilder = () => {
       ...prev,
       fields: prev.fields.filter(field => field.id !== fieldId)
     }));
-    
     setSelectedField(null);
     setShowFieldEditor(false);
   };
 
   const saveForm = async () => {
     try {
+      setLoading(true);
+      
+      // Prepare the form data
       const formToSave = {
         name: formData.name,
         description: formData.description,
         status: formData.status,
-        fields: JSON.stringify(formData.fields),
-        sections: JSON.stringify(formData.sections),
-        settings: JSON.stringify(formData.settings)
+        fields: formData.fields,
+        sections: formData.sections,
+        settings: formData.settings,
+        submissions: formData.submissions || 0
       };
+
+      let result;
       
       if (isEditing) {
         // Update existing form
-        await db.update('forms', formToSave, { id: parseInt(formId) });
-        console.log('Form updated successfully');
+        const { data, error } = await supabase
+          .from('forms')
+          .update(formToSave)
+          .eq('id', formId)
+          .select();
+
+        if (error) throw error;
+        result = data;
       } else {
         // Create new form
-        const result = await db.insert('forms', formToSave);
-        console.log('Form created successfully', result);
+        const { data, error } = await supabase
+          .from('forms')
+          .insert(formToSave)
+          .select();
+
+        if (error) throw error;
+        result = data;
       }
-      
+
       // Show success message
       alert('Form saved successfully!');
-      if (!isEditing) {
+      
+      if (!isEditing && result) {
+        // Navigate to forms list after creating a new form
         navigate('/admin/forms');
       }
     } catch (error) {
       console.error('Error saving form:', error);
       alert('Error saving form. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const previewForm = () => {
     // Open preview in new tab
-    window.open('/form-preview', '_blank');
+    window.open('/referral/demo', '_blank');
   };
 
   const renderFieldEditor = () => {
@@ -223,6 +225,20 @@ const FormBuilder = () => {
               onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Field ID
+            </label>
+            <input
+              type="text"
+              value={selectedField.id}
+              onChange={(e) => updateField(selectedField.id, { id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              This is used as the field identifier. Use only letters, numbers, and underscores.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -295,6 +311,32 @@ const FormBuilder = () => {
     );
   };
 
+  if (loading && !formData.name) {
+    return (
+      <AdminLayout title="Loading Form..." subtitle="Please wait">
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout title="Error" subtitle="Could not load form">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6">
+          <p>{error}</p>
+          <button 
+            onClick={fetchForm}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout title={isEditing ? 'Edit Form' : 'Create New Form'} subtitle="Build and customize referral forms">
       <div className="max-w-7xl mx-auto">
@@ -328,10 +370,20 @@ const FormBuilder = () => {
             </button>
             <button
               onClick={saveForm}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
             >
-              <SafeIcon icon={FiSave} className="w-4 h-4" />
-              {isEditing ? 'Update Form' : 'Save Form'}
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  {isEditing ? 'Updating...' : 'Saving...'}
+                </>
+              ) : (
+                <>
+                  <SafeIcon icon={FiSave} className="w-4 h-4" />
+                  {isEditing ? 'Update Form' : 'Save Form'}
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -458,7 +510,9 @@ const FormBuilder = () => {
                               ) : field.type === 'checkbox' ? (
                                 <div className="flex items-center">
                                   <input type="checkbox" className="h-4 w-4 text-indigo-600 mr-2" />
-                                  <span className="text-sm text-gray-700">{field.placeholder || field.label}</span>
+                                  <span className="text-sm text-gray-700">
+                                    {field.placeholder || field.label}
+                                  </span>
                                 </div>
                               ) : (
                                 <input
@@ -474,6 +528,7 @@ const FormBuilder = () => {
                       </div>
                     );
                   })}
+
                   <div className="mt-8">
                     <button
                       type="button"
@@ -497,10 +552,12 @@ const FormBuilder = () => {
                     <input
                       type="text"
                       value={formData.settings.submitButtonText}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        settings: { ...prev.settings, submitButtonText: e.target.value }
-                      }))}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          settings: { ...prev.settings, submitButtonText: e.target.value }
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                     />
                   </div>
@@ -511,10 +568,12 @@ const FormBuilder = () => {
                     <input
                       type="url"
                       value={formData.settings.redirectUrl}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        settings: { ...prev.settings, redirectUrl: e.target.value }
-                      }))}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          settings: { ...prev.settings, redirectUrl: e.target.value }
+                        }))
+                      }
                       placeholder="https://example.com/thank-you"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                     />
@@ -525,10 +584,12 @@ const FormBuilder = () => {
                         type="checkbox"
                         id="allowDuplicates"
                         checked={formData.settings.allowDuplicates}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          settings: { ...prev.settings, allowDuplicates: e.target.checked }
-                        }))}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            settings: { ...prev.settings, allowDuplicates: e.target.checked }
+                          }))
+                        }
                         className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                       />
                       <label htmlFor="allowDuplicates" className="ml-2 block text-sm text-gray-900">
@@ -540,10 +601,15 @@ const FormBuilder = () => {
                         type="checkbox"
                         id="sendConfirmationEmail"
                         checked={formData.settings.sendConfirmationEmail}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          settings: { ...prev.settings, sendConfirmationEmail: e.target.checked }
-                        }))}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            settings: {
+                              ...prev.settings,
+                              sendConfirmationEmail: e.target.checked
+                            }
+                          }))
+                        }
                         className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                       />
                       <label htmlFor="sendConfirmationEmail" className="ml-2 block text-sm text-gray-900">

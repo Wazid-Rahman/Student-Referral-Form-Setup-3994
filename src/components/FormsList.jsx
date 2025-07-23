@@ -5,44 +5,14 @@ import { format } from 'date-fns';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import AdminLayout from './AdminLayout';
-import db from '../lib/mysql';
+import supabase from '../lib/supabase';
 
 const { FiPlus, FiEdit, FiTrash2, FiCopy, FiEye, FiUsers, FiBarChart } = FiIcons;
 
 const FormsList = () => {
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Mock data for forms
-  const mockForms = [
-    {
-      id: 1,
-      name: 'Educational Program Application',
-      description: 'Main application form for all educational programs',
-      status: 'active',
-      submissions: 156,
-      created_at: '2024-01-15T10:00:00Z',
-      updated_at: '2024-01-20T15:30:00Z'
-    },
-    {
-      id: 2,
-      name: 'SAT Prep Enrollment',
-      description: 'Specific form for SAT preparation program enrollment',
-      status: 'active',
-      submissions: 89,
-      created_at: '2024-01-10T09:00:00Z',
-      updated_at: '2024-01-18T11:20:00Z'
-    },
-    {
-      id: 3,
-      name: 'College Essay Workshop',
-      description: 'Registration form for college essay writing workshop',
-      status: 'draft',
-      submissions: 0,
-      created_at: '2024-01-22T14:00:00Z',
-      updated_at: '2024-01-22T14:00:00Z'
-    }
-  ];
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchForms();
@@ -50,18 +20,85 @@ const FormsList = () => {
 
   const fetchForms = async () => {
     try {
-      // Try to fetch from database
-      const data = await db.getMany('forms', null, { orderBy: 'created_at', orderDirection: 'desc' });
-      
+      setLoading(true);
+      // Fetch from Supabase
+      const { data, error } = await supabase
+        .from('forms')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
       if (data && data.length > 0) {
         setForms(data);
       } else {
         // Use mock data as fallback
+        const mockForms = [
+          {
+            id: 1,
+            name: 'Educational Program Application',
+            description: 'Main application form for all educational programs',
+            status: 'active',
+            submissions: 156,
+            created_at: '2024-01-15T10:00:00Z',
+            updated_at: '2024-01-20T15:30:00Z'
+          },
+          {
+            id: 2,
+            name: 'SAT Prep Enrollment',
+            description: 'Specific form for SAT preparation program enrollment',
+            status: 'active',
+            submissions: 89,
+            created_at: '2024-01-10T09:00:00Z',
+            updated_at: '2024-01-18T11:20:00Z'
+          },
+          {
+            id: 3,
+            name: 'College Essay Workshop',
+            description: 'Registration form for college essay writing workshop',
+            status: 'draft',
+            submissions: 0,
+            created_at: '2024-01-22T14:00:00Z',
+            updated_at: '2024-01-22T14:00:00Z'
+          }
+        ];
         setForms(mockForms);
       }
     } catch (error) {
       console.error('Error fetching forms:', error);
+      setError(error.message || 'Failed to load forms');
       // Use mock data as fallback
+      const mockForms = [
+        {
+          id: 1,
+          name: 'Educational Program Application',
+          description: 'Main application form for all educational programs',
+          status: 'active',
+          submissions: 156,
+          created_at: '2024-01-15T10:00:00Z',
+          updated_at: '2024-01-20T15:30:00Z'
+        },
+        {
+          id: 2,
+          name: 'SAT Prep Enrollment',
+          description: 'Specific form for SAT preparation program enrollment',
+          status: 'active',
+          submissions: 89,
+          created_at: '2024-01-10T09:00:00Z',
+          updated_at: '2024-01-18T11:20:00Z'
+        },
+        {
+          id: 3,
+          name: 'College Essay Workshop',
+          description: 'Registration form for college essay writing workshop',
+          status: 'draft',
+          submissions: 0,
+          created_at: '2024-01-22T14:00:00Z',
+          updated_at: '2024-01-22T14:00:00Z'
+        }
+      ];
       setForms(mockForms);
     } finally {
       setLoading(false);
@@ -72,11 +109,16 @@ const FormsList = () => {
     if (!confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
       return;
     }
-    
+
     try {
-      // Delete from database
-      await db.remove('forms', { id: formId });
-      
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('forms')
+        .delete()
+        .eq('id', formId);
+
+      if (error) throw error;
+
       // Update local state
       setForms(prev => prev.filter(form => form.id !== formId));
       alert('Form deleted successfully!');
@@ -88,32 +130,36 @@ const FormsList = () => {
 
   const duplicateForm = async (form) => {
     try {
+      // Create a copy of the form without the ID
+      const { id, created_at, updated_at, ...formWithoutId } = form;
+      
       const duplicatedForm = {
+        ...formWithoutId,
         name: `${form.name} (Copy)`,
-        description: form.description,
-        status: 'draft',
-        fields: form.fields,
-        sections: form.sections,
-        settings: form.settings,
-        submissions: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        status: 'draft'
       };
-      
-      // Insert into database
-      const result = await db.insert('forms', duplicatedForm);
-      
-      if (result && result.data) {
-        setForms(prev => [result.data, ...prev]);
+
+      // Insert into Supabase
+      const { data, error } = await supabase
+        .from('forms')
+        .insert(duplicatedForm)
+        .select();
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setForms(prev => [data[0], ...prev]);
       } else {
         // Fallback to local state update
-        const localForm = {
+        const mockNewForm = {
           ...duplicatedForm,
-          id: Date.now()
+          id: Date.now(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
-        setForms(prev => [localForm, ...prev]);
+        setForms(prev => [mockNewForm, ...prev]);
       }
-      
+
       alert('Form duplicated successfully!');
     } catch (error) {
       console.error('Error duplicating form:', error);
@@ -123,10 +169,14 @@ const FormsList = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'draft': return 'bg-yellow-100 text-yellow-800';
-      case 'archived': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'active':
+        return 'bg-green-100 text-green-800';
+      case 'draft':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'archived':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -135,6 +185,22 @@ const FormsList = () => {
       <AdminLayout title="Forms" subtitle="Manage your referral forms">
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout title="Forms" subtitle="Manage your referral forms">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6">
+          <p>Error loading forms: {error}</p>
+          <button 
+            onClick={fetchForms}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
         </div>
       </AdminLayout>
     );
@@ -181,7 +247,11 @@ const FormsList = () => {
                       {form.description}
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(form.status)}`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          form.status
+                        )}`}
+                      >
                         {form.status}
                       </span>
                       <span className="text-xs text-gray-500">
@@ -202,7 +272,9 @@ const FormsList = () => {
                   <div className="flex items-center gap-1 text-gray-600">
                     <SafeIcon icon={FiBarChart} className="w-4 h-4" />
                     <span>
-                      {form.submissions > 0 ? Math.round((form.submissions / 200) * 100) : 0}% rate
+                      {form.submissions > 0
+                        ? Math.round((form.submissions / 200) * 100)
+                        : 0}% rate
                     </span>
                   </div>
                 </div>
@@ -223,7 +295,7 @@ const FormsList = () => {
                       <SafeIcon icon={FiCopy} className="w-4 h-4" />
                     </button>
                     <Link
-                      to={`/referral/preview/${form.id}`}
+                      to={`/referral/demo`}
                       target="_blank"
                       className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                       title="Preview form"

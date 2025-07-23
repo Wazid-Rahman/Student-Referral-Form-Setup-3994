@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import AdminLayout from './AdminLayout';
-import db from '../lib/mysql';
+import supabase from '../lib/supabase';
 
 const { FiSearch, FiFilter, FiDownload, FiEye, FiEdit, FiTrash2, FiUser, FiBook, FiMapPin, FiMail, FiPhone, FiCalendar, FiCheck, FiX, FiInfo } = FiIcons;
 
@@ -18,107 +18,13 @@ const FormSubmissions = () => {
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // Mock data for submissions
-  const mockSubmissions = [
-    {
-      id: 1,
-      form_name: "Educational Program Application",
-      parent_name: "Sarah Johnson",
-      parent_email: "sarah.johnson@example.com",
-      parent_phone: "(555) 123-4567",
-      student_name: "Emma Johnson",
-      student_grade: "11th Grade",
-      school_name: "Lincoln High School",
-      district_name: "Westside School District",
-      city: "Los Angeles",
-      state: "CA",
-      program: "SAT Prep",
-      status: "pending",
-      affiliate_id: "ref123abc",
-      created_at: "2024-01-15T10:00:00Z",
-      notes: "Student is interested in weekend sessions"
-    },
-    {
-      id: 2,
-      form_name: "Educational Program Application",
-      parent_name: "Michael Chen",
-      parent_email: "michael.chen@example.com",
-      parent_phone: "(555) 234-5678",
-      student_name: "David Chen",
-      student_grade: "12th Grade",
-      school_name: "Washington High School",
-      district_name: "Eastside School District",
-      city: "San Francisco",
-      state: "CA",
-      program: "ACT Prep",
-      status: "contacted",
-      affiliate_id: "ref456def",
-      created_at: "2024-01-16T14:30:00Z",
-      notes: "Follow-up scheduled for next week"
-    },
-    {
-      id: 3,
-      form_name: "Educational Program Application",
-      parent_name: "Lisa Rodriguez",
-      parent_email: "lisa.rodriguez@example.com",
-      parent_phone: "(555) 345-6789",
-      student_name: "Carlos Rodriguez",
-      student_grade: "10th Grade",
-      school_name: "Jefferson High School",
-      district_name: "Central School District",
-      city: "Austin",
-      state: "TX",
-      program: "PSAT Prep",
-      status: "enrolled",
-      affiliate_id: "ref789ghi",
-      created_at: "2024-01-17T09:15:00Z",
-      notes: "Payment received, materials sent"
-    },
-    {
-      id: 4,
-      form_name: "SAT Prep Enrollment",
-      parent_name: "Robert Wilson",
-      parent_email: "robert.wilson@example.com",
-      parent_phone: "(555) 456-7890",
-      student_name: "James Wilson",
-      student_grade: "11th Grade",
-      school_name: "Roosevelt High School",
-      district_name: "Northern School District",
-      city: "Boston",
-      state: "MA",
-      program: "SAT Prep",
-      status: "completed",
-      affiliate_id: "ref101jkl",
-      created_at: "2024-01-18T16:45:00Z",
-      notes: "Program completed with excellent results"
-    },
-    {
-      id: 5,
-      form_name: "College Essay Workshop",
-      parent_name: "Jennifer Thompson",
-      parent_email: "jennifer.thompson@example.com",
-      parent_phone: "(555) 567-8901",
-      student_name: "Emily Thompson",
-      student_grade: "12th Grade",
-      school_name: "Kennedy High School",
-      district_name: "Southern School District",
-      city: "Miami",
-      state: "FL",
-      program: "College Essay",
-      status: "pending",
-      affiliate_id: "ref112mno",
-      created_at: "2024-01-19T11:30:00Z",
-      notes: "Requested more information about workshop dates"
-    }
-  ];
-
   // Form names for filter options
-  const formOptions = [
+  const [formOptions, setFormOptions] = useState([
     { value: 'all', label: 'All Forms' },
     { value: 'Educational Program Application', label: 'Educational Program Application' },
     { value: 'SAT Prep Enrollment', label: 'SAT Prep Enrollment' },
     { value: 'College Essay Workshop', label: 'College Essay Workshop' }
-  ];
+  ]);
 
   // Status options for filter
   const statusOptions = [
@@ -132,32 +38,185 @@ const FormSubmissions = () => {
 
   useEffect(() => {
     fetchSubmissions();
+    fetchFormNames();
   }, []);
+
+  const fetchFormNames = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('forms')
+        .select('name')
+        .order('name');
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const options = [
+          { value: 'all', label: 'All Forms' },
+          ...data.map(form => ({ value: form.name, label: form.name }))
+        ];
+        setFormOptions(options);
+      }
+    } catch (err) {
+      console.error('Error fetching form names:', err);
+    }
+  };
 
   const fetchSubmissions = async () => {
     try {
       setLoading(true);
-      const data = await db.getMany('form_submissions', null, { 
-        orderBy: 'created_at',
-        orderDirection: 'desc'
-      });
       
+      // Fetch submissions from Supabase
+      const { data, error } = await supabase
+        .from('form_submissions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
       if (data && data.length > 0) {
-        // Enhance data with form names if not present
-        const enhancedData = data.map(submission => ({
-          ...submission,
-          form_name: submission.form_name || "Educational Program Application",
-          status: submission.status || "pending"
-        }));
-        setSubmissions(enhancedData);
+        setSubmissions(data);
       } else {
         // Use mock data as fallback
+        const mockSubmissions = [
+          {
+            id: 1,
+            form_name: "Educational Program Application",
+            parent_name: "Sarah Johnson",
+            parent_email: "sarah.johnson@example.com",
+            parent_phone: "(555) 123-4567",
+            student_name: "Emma Johnson",
+            student_grade: "11th Grade",
+            school_name: "Lincoln High School",
+            district_name: "Westside School District",
+            city: "Los Angeles",
+            state: "CA",
+            program: "SAT Prep",
+            status: "pending",
+            affiliate_id: "ref123abc",
+            created_at: "2024-01-15T10:00:00Z",
+            notes: "Student is interested in weekend sessions"
+          },
+          {
+            id: 2,
+            form_name: "Educational Program Application",
+            parent_name: "Michael Chen",
+            parent_email: "michael.chen@example.com",
+            parent_phone: "(555) 234-5678",
+            student_name: "David Chen",
+            student_grade: "12th Grade",
+            school_name: "Washington High School",
+            district_name: "Eastside School District",
+            city: "San Francisco",
+            state: "CA",
+            program: "ACT Prep",
+            status: "contacted",
+            affiliate_id: "ref456def",
+            created_at: "2024-01-16T14:30:00Z",
+            notes: "Follow-up scheduled for next week"
+          },
+          {
+            id: 3,
+            form_name: "Educational Program Application",
+            parent_name: "Lisa Rodriguez",
+            parent_email: "lisa.rodriguez@example.com",
+            parent_phone: "(555) 345-6789",
+            student_name: "Carlos Rodriguez",
+            student_grade: "10th Grade",
+            school_name: "Jefferson High School",
+            district_name: "Central School District",
+            city: "Austin",
+            state: "TX",
+            program: "PSAT Prep",
+            status: "enrolled",
+            affiliate_id: "ref789ghi",
+            created_at: "2024-01-17T09:15:00Z",
+            notes: "Payment received, materials sent"
+          },
+          {
+            id: 4,
+            form_name: "SAT Prep Enrollment",
+            parent_name: "Robert Wilson",
+            parent_email: "robert.wilson@example.com",
+            parent_phone: "(555) 456-7890",
+            student_name: "James Wilson",
+            student_grade: "11th Grade",
+            school_name: "Roosevelt High School",
+            district_name: "Northern School District",
+            city: "Boston",
+            state: "MA",
+            program: "SAT Prep",
+            status: "completed",
+            affiliate_id: "ref101jkl",
+            created_at: "2024-01-18T16:45:00Z",
+            notes: "Program completed with excellent results"
+          },
+          {
+            id: 5,
+            form_name: "College Essay Workshop",
+            parent_name: "Jennifer Thompson",
+            parent_email: "jennifer.thompson@example.com",
+            parent_phone: "(555) 567-8901",
+            student_name: "Emily Thompson",
+            student_grade: "12th Grade",
+            school_name: "Kennedy High School",
+            district_name: "Southern School District",
+            city: "Miami",
+            state: "FL",
+            program: "College Essay",
+            status: "pending",
+            affiliate_id: "ref112mno",
+            created_at: "2024-01-19T11:30:00Z",
+            notes: "Requested more information about workshop dates"
+          }
+        ];
         setSubmissions(mockSubmissions);
       }
     } catch (err) {
       console.error('Error fetching submissions:', err);
       setError('Failed to load submissions');
+      
       // Use mock data as fallback
+      const mockSubmissions = [
+        {
+          id: 1,
+          form_name: "Educational Program Application",
+          parent_name: "Sarah Johnson",
+          parent_email: "sarah.johnson@example.com",
+          parent_phone: "(555) 123-4567",
+          student_name: "Emma Johnson",
+          student_grade: "11th Grade",
+          school_name: "Lincoln High School",
+          district_name: "Westside School District",
+          city: "Los Angeles",
+          state: "CA",
+          program: "SAT Prep",
+          status: "pending",
+          affiliate_id: "ref123abc",
+          created_at: "2024-01-15T10:00:00Z",
+          notes: "Student is interested in weekend sessions"
+        },
+        {
+          id: 2,
+          form_name: "Educational Program Application",
+          parent_name: "Michael Chen",
+          parent_email: "michael.chen@example.com",
+          parent_phone: "(555) 234-5678",
+          student_name: "David Chen",
+          student_grade: "12th Grade",
+          school_name: "Washington High School",
+          district_name: "Eastside School District",
+          city: "San Francisco",
+          state: "CA",
+          program: "ACT Prep",
+          status: "contacted",
+          affiliate_id: "ref456def",
+          created_at: "2024-01-16T14:30:00Z",
+          notes: "Follow-up scheduled for next week"
+        }
+      ];
       setSubmissions(mockSubmissions);
     } finally {
       setLoading(false);
@@ -171,18 +230,19 @@ const FormSubmissions = () => {
 
   const handleStatusChange = async (submissionId, newStatus) => {
     try {
-      // Update in database
-      await db.update(
-        'form_submissions',
-        { status: newStatus },
-        { id: submissionId }
-      );
-      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('form_submissions')
+        .update({ status: newStatus })
+        .eq('id', submissionId);
+
+      if (error) throw error;
+
       // Update local state
-      setSubmissions(prev => prev.map(sub => 
-        sub.id === submissionId ? { ...sub, status: newStatus } : sub
-      ));
-      
+      setSubmissions(prev => 
+        prev.map(sub => sub.id === submissionId ? { ...sub, status: newStatus } : sub)
+      );
+
       // If the selected submission is the one being updated, update it too
       if (selectedSubmission && selectedSubmission.id === submissionId) {
         setSelectedSubmission(prev => ({ ...prev, status: newStatus }));
@@ -234,7 +294,7 @@ const FormSubmissions = () => {
     
     const matchesForm = formFilter === 'all' || submission.form_name === formFilter;
     const matchesStatus = statusFilter === 'all' || submission.status === statusFilter;
-    
+
     return matchesSearch && matchesForm && matchesStatus;
   });
 
@@ -348,7 +408,10 @@ const FormSubmissions = () => {
             <h3 className="text-lg font-semibold text-gray-900">Submissions</h3>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative">
-                <SafeIcon icon={FiSearch} className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <SafeIcon
+                  icon={FiSearch}
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+                />
                 <input
                   type="text"
                   placeholder="Search by name or email..."
@@ -450,7 +513,11 @@ const FormSubmissions = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(submission.status)}`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            submission.status
+                          )}`}
+                        >
                           {submission.status}
                         </span>
                       </td>
@@ -509,6 +576,7 @@ const FormSubmissions = () => {
                 </button>
               </div>
             </div>
+
             <div className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Student & Parent Information */}
@@ -566,7 +634,9 @@ const FormSubmissions = () => {
                       <SafeIcon icon={FiMapPin} className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
                         <p className="text-sm text-gray-600">Location</p>
-                        <p className="font-medium">{selectedSubmission.city}, {selectedSubmission.state}</p>
+                        <p className="font-medium">
+                          {selectedSubmission.city}, {selectedSubmission.state}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -616,7 +686,11 @@ const FormSubmissions = () => {
                   <div className="space-y-4">
                     <div>
                       <p className="text-sm text-gray-600 mb-2">Current Status</p>
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedSubmission.status)}`}>
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                          selectedSubmission.status
+                        )}`}
+                      >
                         {selectedSubmission.status}
                       </span>
                     </div>
@@ -649,6 +723,7 @@ const FormSubmissions = () => {
                 </div>
               </div>
             </div>
+
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between">
               <button
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
